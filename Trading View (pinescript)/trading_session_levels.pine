@@ -1,0 +1,116 @@
+//@version=6
+// Created by Data For Traders
+// https://datafortraders.io/
+// https://x.com/datafortraders
+// https://discord.gg/x3yu3AFKyd
+
+indicator("Trading Session Levels | By Data For Traders", shorttitle="", overlay=true, max_lines_count=500, max_labels_count=500)
+
+// ===== INPUTS =====
+bool showTokyo   = input.bool(true, "Show Tokyo Session")
+bool showLondon  = input.bool(true, "Show London Session")
+bool showNewYork = input.bool(true, "Show New York Session")
+bool showOpenCloseText = input.bool(true, "Show Open/Close as Text")
+bool showHighLowLabels = input.bool(true, "Show High/Low as Labels")
+
+// Tokyo Session Inputs
+string tokyoTime = input.session("0900-1500", "Tokyo Session Time", display=display.none)
+string tokyoTZ   = input.string("Asia/Tokyo", "Tokyo Timezone", display=display.none)
+color tokyoColor = input.color(color.new(#2962FF, 0), "Tokyo Line Color")
+
+// London Session Inputs
+string londonTime = input.session("0830-1630", "London Session Time", display=display.none)
+string londonTZ   = input.string("Europe/London", "London Timezone", display=display.none)
+color londonColor = input.color(color.new(#FF9800, 0), "London Line Color")
+
+// New York Session Inputs
+string newYorkTime = input.session("0930-1600", "New York Session Time", display=display.none)
+string newYorkTZ   = input.string("America/New_York", "New York Timezone", display=display.none)
+color newYorkColor = input.color(color.new(#089981, 0), "New York Line Color")
+
+// ===== FUNCTION TO TRACK SESSION LINES =====
+trackSession(string sessionTime, string sessionTZ, color lineColor, string sessionName) =>
+    var line openLine = na
+    var line closeLine = na
+    var line highLine = na
+    var line lowLine = na
+    var label highLabel = na
+    var label lowLabel = na
+    var label openText = na
+    var label closeText = na
+
+    // Check if the current bar is within the session
+    bool inSession = not na(time("", sessionTime, sessionTZ))
+    bool sessionStart = inSession and not inSession[1]
+    bool sessionEnd = not inSession and inSession[1]
+
+    // Initialize session variables at session start
+    if sessionStart
+        // Remove old session lines and labels
+        line.delete(openLine)
+        line.delete(closeLine)
+        line.delete(highLine)
+        line.delete(lowLine)
+        label.delete(highLabel)
+        label.delete(lowLabel)
+        label.delete(openText)
+        label.delete(closeText)
+
+        // Create new session lines
+        openLine := line.new(bar_index, open, bar_index + 1, open, color=lineColor, width=1, style=line.style_dotted)
+        closeLine := na
+        highLine := line.new(bar_index, high, bar_index + 1, high, color=lineColor, width=1, style=line.style_solid)
+        lowLine := line.new(bar_index, low, bar_index + 1, low, color=lineColor, width=1, style=line.style_solid)
+
+        // Create high/low labels if enabled
+        if showHighLowLabels
+            highLabel := label.new(bar_index, high, sessionName + " High - " + str.tostring(high, format.mintick), style=label.style_label_down, color=lineColor, textcolor=color.white)
+            lowLabel := label.new(bar_index, low, sessionName + " Low - " + str.tostring(low, format.mintick), style=label.style_label_up, color=lineColor, textcolor=color.white)
+
+        // Create open text if enabled
+        if showOpenCloseText
+            openText := label.new(bar_index, open, sessionName + " Open: " + str.tostring(open, format.mintick), style=label.style_none, textcolor=lineColor, xloc=xloc.bar_index, yloc=yloc.price)
+
+    // Update session high/low dynamically
+    if inSession
+        if high > line.get_y1(highLine)
+            line.set_y1(highLine, high)
+            line.set_y2(highLine, high)
+            if showHighLowLabels
+                label.set_y(highLabel, high)
+                label.set_text(highLabel, sessionName + " High - " + str.tostring(high, format.mintick))
+        if low < line.get_y1(lowLine)
+            line.set_y1(lowLine, low)
+            line.set_y2(lowLine, low)
+            if showHighLowLabels
+                label.set_y(lowLabel, low)
+                label.set_text(lowLabel, sessionName + " Low - " + str.tostring(low, format.mintick))
+        line.set_x2(highLine, bar_index + 1)  // Extend high line
+        line.set_x2(lowLine, bar_index + 1)   // Extend low line
+        line.set_x2(openLine, bar_index + 1)  // Extend open line
+        if showOpenCloseText
+            label.set_x(openText, bar_index + 1)  // Move open text to the rightmost bar
+
+    // Finalize session close at session end
+    if sessionEnd
+        closeLine := line.new(bar_index, close, bar_index + 1, close, color=lineColor, width=1, style=line.style_dotted)
+        if showOpenCloseText
+            closeText := label.new(bar_index, close, sessionName + " Close: " + str.tostring(close, format.mintick), style=label.style_none, textcolor=lineColor, xloc=xloc.bar_index, yloc=yloc.price)
+
+    // Extend all lines into the next session
+    if not inSession and not sessionStart
+        line.set_x2(openLine, bar_index + 1)
+        line.set_x2(closeLine, bar_index + 1)
+        line.set_x2(highLine, bar_index + 1)
+        line.set_x2(lowLine, bar_index + 1)
+        if showOpenCloseText
+            label.set_x(openText, bar_index + 1)
+            label.set_x(closeText, bar_index + 1)
+
+// ===== TRACK EACH SESSION =====
+if showTokyo
+    trackSession(tokyoTime, tokyoTZ, tokyoColor, "Tokyo")
+if showLondon
+    trackSession(londonTime, londonTZ, londonColor, "London")
+if showNewYork
+    trackSession(newYorkTime, newYorkTZ, newYorkColor, "New York")
