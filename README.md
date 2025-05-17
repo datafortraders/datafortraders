@@ -1,1 +1,4 @@
-## A code base for day trading indicators, strategies and more. Primary focus will be on TradingView (pinescript) and ThinkorSwim (thinkscript)
+Random stock market stuff
+
+https://datafortraders.io/
+https://x.com/datafortraders
