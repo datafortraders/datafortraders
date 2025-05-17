@@ -1,6 +1,7 @@
 """
 # DATA FOR TRADERS
-# datafortraders.io
+# https://datafortraders.io/
+https://x.com/datafortraders
 
 S&P 500 Monday/3rd‑Friday Analysis
 ---------------------------------
