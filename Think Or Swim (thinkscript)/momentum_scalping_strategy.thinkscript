@@ -1,0 +1,154 @@
+# Define parameters (you can adjust these values as needed)
+def adxLength = 14;
+def diLength = 14;
+def atrLength = 14;
+def keltnermultiplier = 1.5;
+def keltnerlength = 20;
+def rsiLength = 14;
+def rsiOverbought = 75;
+def rsiOversold = 25;
+def strongTrendThreshold = 30;  # ADX threshold for a strong trend
+
+# Dynamic ATR Threshold (adaptive)
+def dynamicATRThreshold = Average(ATR(atrLength), 10);
+
+# ATR Setup for Volatility Filtering
+def atrValue = ATR(atrLength);
+def highVolatility = atrValue > dynamicATRThreshold;
+
+# Adjusted Keltner Channels Setup
+def avgTrueRange = ATR(keltnerlength);
+def midLine = ExpAverage(close, keltnerlength);
+def upperKeltner = midLine + keltnermultiplier * avgTrueRange;
+def lowerKeltner = midLine - keltnermultiplier * avgTrueRange;
+
+# DMI/ADX Setup for Trend Strength
+def adxValue = ADX(adxLength);
+def plusDI = DIPlus(diLength);
+def minusDI = DIMinus(diLength);
+def strongUptrend = adxValue > strongTrendThreshold and plusDI > minusDI;
+def strongDowntrend = adxValue > strongTrendThreshold and minusDI > plusDI;
+
+# RSI for Overbought/Oversold Conditions (with smoothing)
+def smoothedRSI = ExpAverage(RSI(length = rsiLength), 5);
+
+# Dynamic RSI Thresholds for Trending Markets
+def dynamicRSIOverbought = if strongUptrend then 85 else rsiOverbought;
+def dynamicRSIOversold = if strongDowntrend then 15 else rsiOversold;
+
+# Intrabar price capture using HL2 (average of high and low)
+def currentPrice = HL2;
+
+# ---------------------------------------------------
+# NEW: Define Significant Breakout Conditions
+# ---------------------------------------------------
+def significantBreakoutLong = close > midLine + 1.5 * atrValue;
+def significantBreakoutShort = close < midLine - 1.5 * atrValue;
+
+# ---------------------------------------------------
+# Improved Entry Conditions
+# Now, we allow entries if either the market is strongly trending 
+# (ADX > strongTrendThreshold) OR we detect a significant breakout.
+# ---------------------------------------------------
+def longCondition = ((adxValue > strongTrendThreshold) or significantBreakoutLong) and
+                    !strongDowntrend and
+                    plusDI > minusDI and 
+                    close > upperKeltner and 
+                    highVolatility and 
+                    smoothedRSI < dynamicRSIOverbought;
+
+def shortCondition = ((adxValue > strongTrendThreshold) or significantBreakoutShort) and
+                     !strongUptrend and
+                     minusDI > plusDI and 
+                     close < lowerKeltner and 
+                     highVolatility and 
+                     smoothedRSI > dynamicRSIOversold;
+
+# Improved Exit Conditions
+def exitLongCondition = (close < midLine and !strongUptrend) or 
+                        (minusDI > plusDI and adxValue > strongTrendThreshold) or 
+                        smoothedRSI > dynamicRSIOverbought;
+
+def exitShortCondition = (close > midLine and !strongDowntrend) or 
+                         (plusDI > minusDI and adxValue > strongTrendThreshold) or 
+                         smoothedRSI < dynamicRSIOversold;
+
+# Trend Continuation Conditions
+def continueLong = strongUptrend and close > midLine;
+def continueShort = strongDowntrend and close < midLine;
+
+# Intrabar signal tracking and price capture
+rec inLongTrade = CompoundValue(1, 
+    if !inLongTrade[1] and longCondition then 1
+    else if inLongTrade[1] and exitLongCondition and !continueLong then 0
+    else inLongTrade[1], 0);
+
+rec inShortTrade = CompoundValue(1,
+    if !inShortTrade[1] and shortCondition then 1
+    else if inShortTrade[1] and exitShortCondition and !continueShort then 0
+    else inShortTrade[1], 0);
+
+rec longEntryPrice = CompoundValue(1,
+    if !inLongTrade[1] and longCondition then currentPrice
+    else longEntryPrice[1], Double.NaN);
+
+rec shortEntryPrice = CompoundValue(1,
+    if !inShortTrade[1] and shortCondition then currentPrice
+    else shortEntryPrice[1], Double.NaN);
+
+rec longExitPrice = CompoundValue(1,
+    if inLongTrade[1] and exitLongCondition and !continueLong then currentPrice
+    else longExitPrice[1], Double.NaN);
+
+rec shortExitPrice = CompoundValue(1,
+    if inShortTrade[1] and exitShortCondition and !continueShort then currentPrice
+    else shortExitPrice[1], Double.NaN);
+
+# Plot Buy/Sell Signals (Intrabar, No Re-Print)
+plot LongSignal = if !inLongTrade[1] and longCondition then low else Double.NaN;
+LongSignal.SetPaintingStrategy(PaintingStrategy.ARROW_UP);
+LongSignal.SetDefaultColor(Color.GREEN);
+LongSignal.SetLineWeight(3);
+
+plot ShortSignal = if !inShortTrade[1] and shortCondition then high else Double.NaN;
+ShortSignal.SetPaintingStrategy(PaintingStrategy.ARROW_DOWN);
+ShortSignal.SetDefaultColor(Color.RED);
+ShortSignal.SetLineWeight(3);
+
+plot ExitLongSignal = if inLongTrade[1] and exitLongCondition and !continueLong then high else Double.NaN;
+ExitLongSignal.SetPaintingStrategy(PaintingStrategy.ARROW_DOWN);
+ExitLongSignal.SetDefaultColor(Color.YELLOW);
+ExitLongSignal.SetLineWeight(3);
+
+plot ExitShortSignal = if inShortTrade[1] and exitShortCondition and !continueShort then low else Double.NaN;
+ExitShortSignal.SetPaintingStrategy(PaintingStrategy.ARROW_UP);
+ExitShortSignal.SetDefaultColor(Color.CYAN);
+ExitShortSignal.SetLineWeight(3);
+
+# Labels for Long, Short, Exit Long, and Exit Short with Accurate Intrabar Prices
+AddChartBubble(!inLongTrade[1] and longCondition, low, "Long\n$" + Round(longEntryPrice, 2), Color.GREEN, yes);
+AddChartBubble(!inShortTrade[1] and shortCondition, high, "Short\n$" + Round(shortEntryPrice, 2), Color.RED, no);
+AddChartBubble(inLongTrade[1] and exitLongCondition and !continueLong, high, "Exit Long\n$" + Round(longExitPrice, 2), Color.YELLOW, no);
+AddChartBubble(inShortTrade[1] and exitShortCondition and !continueShort, low, "Exit Short\n$" + Round(shortExitPrice, 2), Color.CYAN, yes);
+
+# Draw Keltner Channels on Chart
+plot KeltnerUpper = upperKeltner;
+KeltnerUpper.SetDefaultColor(Color.YELLOW);
+KeltnerUpper.SetLineWeight(2);
+
+plot KeltnerLower = lowerKeltner;
+KeltnerLower.SetDefaultColor(Color.YELLOW);
+KeltnerLower.SetLineWeight(2);
+
+plot KeltnerMid = midLine;
+KeltnerMid.SetDefaultColor(Color.CYAN);
+KeltnerMid.SetLineWeight(1);
+
+# Sticky Labels for Current Indicator Values
+AddLabel(yes, "ADX: " + Round(adxValue, 2), Color.WHITE);
+AddLabel(yes, "+DI: " + Round(plusDI, 2), Color.GREEN);
+AddLabel(yes, "-DI: " + Round(minusDI, 2), Color.RED);
+AddLabel(yes, "ATR: " + Round(atrValue, 2), if highVolatility then Color.GREEN else Color.RED);
+AddLabel(yes, "RSI: " + Round(smoothedRSI, 2), Color.MAGENTA);
+AddLabel(yes, "Strong Trend: " + (if strongUptrend then "UP" else if strongDowntrend then "DOWN" else "NO"), 
+         if strongUptrend then Color.GREEN else if strongDowntrend then Color.RED else Color.GRAY);
